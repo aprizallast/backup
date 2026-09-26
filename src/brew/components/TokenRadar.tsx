@@ -4,6 +4,7 @@ import { I18N } from '../i18n.ts';
 import { formatUsd, formatPct, truncateAddr } from '../utils/format.ts';
 import { TokenAvatar } from './TokenAvatar.tsx';
 import { Search, Plus, ArrowUpDown, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
+import type { ThesisEntry } from '@/lib/thesis/thesis-store';
 
 const TIMEFRAMES = [
   { key: 'priceChange5m' as const, title: '5M CHANGE', tx: '5m', buys: 'buys5m' as const, sells: 'sells5m' as const },
@@ -30,10 +31,23 @@ function ChangeCell({ title, change, txLabel, buys, sells }: { title: string; ch
   );
 }
 
+function getInitials(value: string): string {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('') || 'A';
+}
+
 interface TokenRadarProps {
   tokens: Token[];
   totalLaunches: number;
   lang: Language;
+  thesisByToken?: Record<string, ThesisEntry[]>;
+  onAddThesis?: (token: Token, title: string, content: string) => void;
+  onLikeThesis?: (token: Token, thesisId: string) => void;
+  currentUserId?: string | null;
   onAnalyze: (token: Token) => void;
   onTrade: (token: Token) => void;
   onFilterByDev: (devAddress: string) => void;
@@ -51,6 +65,10 @@ export const TokenRadar: React.FC<TokenRadarProps> = ({
   tokens,
   totalLaunches,
   lang,
+  thesisByToken,
+  onAddThesis,
+  onLikeThesis,
+  currentUserId,
   onAnalyze,
   onTrade,
   onFilterByDev,
@@ -87,6 +105,9 @@ export const TokenRadar: React.FC<TokenRadarProps> = ({
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
+  const [expandedToken, setExpandedToken] = useState<string | null>(null);
+  const [openThesisComposer, setOpenThesisComposer] = useState<Record<string, boolean>>({});
+  const [thesisDrafts, setThesisDrafts] = useState<Record<string, { title: string; content: string }>>({});
   const pageSize = 30;
 
   // Accurately compute creator launch counts across all active tokens
@@ -108,6 +129,21 @@ export const TokenRadar: React.FC<TokenRadarProps> = ({
     });
     return count;
   }, [tokens, devCounts]);
+
+  const getRecentBuyMomentum = (token: Token) => {
+    const score =
+      (token.buys5m || 0) * 100 +
+      (token.buys1h || 0) * 30 +
+      (token.buys6h || 0) * 8 +
+      (token.buys24h || 0) * 2;
+
+    const recencyBoost =
+      (token.priceChange5m || 0) * 0.3 +
+      (token.priceChange1h || 0) * 0.15 +
+      (token.priceChange6h || 0) * 0.05;
+
+    return score + Math.max(recencyBoost, 0);
+  };
 
   const categoryCounts = useMemo(() => {
     let dexActive = 0;
@@ -159,6 +195,19 @@ export const TokenRadar: React.FC<TokenRadarProps> = ({
 
     if (filterType === 'newest') {
       list.sort((a, b) => (b.launchedAt || b.blockNumber || 0) - (a.launchedAt || a.blockNumber || 0));
+    } else if (filterType === 'recent-buy') {
+      list.sort((a, b) => {
+        if ((b.lastBuyAt || 0) !== (a.lastBuyAt || 0)) {
+          return (b.lastBuyAt || 0) - (a.lastBuyAt || 0);
+        }
+        if ((b.lastBuyBlockNumber || 0) !== (a.lastBuyBlockNumber || 0)) {
+          return (b.lastBuyBlockNumber || 0) - (a.lastBuyBlockNumber || 0);
+        }
+        if ((b.lastBuyLogIndex || 0) !== (a.lastBuyLogIndex || 0)) {
+          return (b.lastBuyLogIndex || 0) - (a.lastBuyLogIndex || 0);
+        }
+        return getRecentBuyMomentum(b) - getRecentBuyMomentum(a);
+      });
     } else if (filterType === 'top10-mcap') {
       // Display ALL tokens sorted descending by Market Cap
       list.sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0));
@@ -330,6 +379,13 @@ export const TokenRadar: React.FC<TokenRadarProps> = ({
             {dict.newestReleases}
           </button>
           <button
+            onClick={() => { setFilterType('recent-buy'); setCurrentPage(1); }}
+            className="chip"
+            data-on={filterType === 'recent-buy'}
+          >
+            {dict.recentBuy}
+          </button>
+          <button
             onClick={() => { setFilterType('dex-active'); setCurrentPage(1); }}
             className="chip"
             data-on={filterType === 'dex-active'}
@@ -417,6 +473,7 @@ export const TokenRadar: React.FC<TokenRadarProps> = ({
               {filterType === 'top10-mcap' && `🏆 Top Market Cap: Displaying all ${filteredTokens.length} tokens sorted from highest to lowest valuation`}
               {filterType === 'top10-vol' && `⚡ Top 24h Volume: Displaying all ${filteredTokens.length} tokens sorted by PancakeSwap & BSC volume`}
               {filterType === 'newest' && `🆕 Newest Releases: Displaying all ${filteredTokens.length} tokens sorted by launch block`}
+              {filterType === 'recent-buy' && `💸 Recent Buy: Displaying ${filteredTokens.length} tokens ordered by latest recorded buy transaction`}
               {filterType === 'all' && `🌐 All Tokens: Displaying ${filteredTokens.length} tokens (Page ${validPage} of ${totalPages})`}
               {filterType === 'serial-dev' && `🚨 Dev Clusters: Displaying ${filteredTokens.length} tokens from multi-token deployers`}
               {filterType === 'top10-potential' && `🤖 Agent Score: Displaying ${filteredTokens.length} tokens sorted by composite AI rating`}
@@ -433,11 +490,16 @@ export const TokenRadar: React.FC<TokenRadarProps> = ({
               <tr>
                 <th
                   onClick={() => handleSort('rank')}
-                  className="px-4 py-3 cursor-pointer select-none text-[var(--color-muted)] hover:text-[var(--color-ink)]"
+                  className="sticky left-0 z-20 bg-[var(--color-field)] px-4 py-3 cursor-pointer select-none text-[var(--color-muted)] hover:text-[var(--color-ink)]"
                 >
                   <div className="flex items-center gap-1.5">
                     <span>{dict.thRank}</span>
                     <ArrowUpDown className="h-3 w-3 opacity-50" />
+                  </div>
+                </th>
+                <th className="px-4 py-3 text-[var(--color-muted)]">
+                  <div className="flex items-center gap-1.5">
+                    <span>Thesis</span>
                   </div>
                 </th>
                 <th
@@ -534,155 +596,344 @@ export const TokenRadar: React.FC<TokenRadarProps> = ({
                   const globalIdx = startIdx + idx + 1;
                   const cAddr = (t.creator || '').toLowerCase().trim();
                   const devCount = cAddr ? Math.max(t.creatorLaunchCount || 1, devCounts[cAddr] || 1) : (t.creatorLaunchCount || 1);
+                  const thesisEntries = thesisByToken?.[t.address.toLowerCase()] ?? [];
+                  const isExpanded = expandedToken === t.address.toLowerCase();
+                  const isComposerOpen = !!openThesisComposer[t.address.toLowerCase()];
+                  const sortedEntries = [...thesisEntries].sort((a, b) => (b.likes ?? 0) - (a.likes ?? 0) || (b.createdAt ?? 0) - (a.createdAt ?? 0));
+                  const featuredEntry = sortedEntries[0] ?? null;
+                  const hiddenEntries = sortedEntries.slice(1);
 
                   return (
-                    <tr
-                      key={t.address}
-                      className="transition-colors hover:bg-white/[0.03]"
-                    >
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2.5">
-                          <span className="font-mono text-[var(--color-muted)] text-[11px] w-6 font-bold group-hover:text-[var(--color-copper)] transition-colors">
-                            #{globalIdx}
-                          </span>
-                          <TokenAvatar
-                            symbol={t.symbol}
-                            address={t.address}
-                            logoUrl={t.logoUrl}
-                            fallbackLogoUrl={t.fallbackLogoUrl}
-                            onchainArtworkContract={t.onchainArtworkContract}
-                            size="md"
-                          />
-                          <div className="min-w-0">
-                            <div className="font-bold text-[var(--color-ink)] flex items-center gap-1.5 flex-wrap">
-                              <span className="group-hover:text-[var(--color-copper)] transition-colors font-mono font-black">{t.symbol}</span>
-                              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded border bg-[var(--color-field)] text-[var(--color-muted)] border-[var(--color-line)]">
-                                /{t.quoteSymbol || 'WBNB'}
-                              </span>
-                              {globalIdx <= 3 && filterType === 'newest' && (
-                                <span className="text-[9px] font-mono font-extrabold px-1.5 py-0.2 rounded bg-emerald-950 text-[var(--color-up)] border border-emerald-500/50">
-                                  NEW
+                    <React.Fragment key={t.address}>
+                      <tr className="transition-colors hover:bg-white/[0.03]">
+                        <td className="sticky left-0 z-10 bg-[var(--color-surface)] px-4 py-3 shadow-[1px_0_0_rgba(244,241,234,0.08)]">
+                          <div className="flex items-center gap-2.5">
+                            <span className="font-mono text-[var(--color-muted)] text-[11px] w-6 font-bold group-hover:text-[var(--color-copper)] transition-colors">
+                              #{globalIdx}
+                            </span>
+                            <TokenAvatar
+                              symbol={t.symbol}
+                              address={t.address}
+                              logoUrl={t.logoUrl}
+                              fallbackLogoUrl={t.fallbackLogoUrl}
+                              onchainArtworkContract={t.onchainArtworkContract}
+                              size="md"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="font-bold text-[var(--color-ink)] flex items-center gap-1.5 flex-wrap">
+                                <span className="group-hover:text-[var(--color-copper)] transition-colors font-mono font-black">{t.symbol}</span>
+                                <span className="text-[9px] font-mono px-1.5 py-0.2 rounded border bg-[var(--color-field)] text-[var(--color-muted)] border-[var(--color-line)]">
+                                  /{t.quoteSymbol || 'WBNB'}
                                 </span>
-                              )}
-                              {filterType === 'top10-gainers' && (
-                                <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-amber-500 text-stone-950 shadow-sm">
-                                  #{globalIdx}
-                                </span>
-                              )}
-                              {filterType === 'dex-active' && (t.liquidityUsd > 0 || (t.pool && t.pool !== '')) && (
-                                <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/40">
-                                  DEX
-                                </span>
-                              )}
-                              {filterType === 'top10-mcap' && globalIdx <= 5 && (
-                                <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-amber-950 text-[var(--color-copper)] border border-[var(--color-line)]">
-                                  #{globalIdx}
-                                </span>
-                              )}
-                              {filterType === 'top10-vol' && globalIdx <= 5 && (
-                                <span className="num text-[11px] text-[var(--color-muted)]">
-                                  #{globalIdx}
-                                </span>
-                              )}
-                            </div>
-                            <div className="max-w-[160px] truncate text-[12px] text-[var(--color-muted)]" title={t.name}>
-                              {t.name}
+                                {globalIdx <= 3 && filterType === 'newest' && (
+                                  <span className="text-[9px] font-mono font-extrabold px-1.5 py-0.2 rounded bg-emerald-950 text-[var(--color-up)] border border-emerald-500/50">
+                                    NEW
+                                  </span>
+                                )}
+                                {filterType === 'top10-gainers' && (
+                                  <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-amber-500 text-stone-950 shadow-sm">
+                                    #{globalIdx}
+                                  </span>
+                                )}
+                                {filterType === 'dex-active' && (t.liquidityUsd > 0 || (t.pool && t.pool !== '')) && (
+                                  <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/40">
+                                    DEX
+                                  </span>
+                                )}
+                                {filterType === 'top10-mcap' && globalIdx <= 5 && (
+                                  <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-amber-950 text-[var(--color-copper)] border border-[var(--color-line)]">
+                                    #{globalIdx}
+                                  </span>
+                                )}
+                                {filterType === 'top10-vol' && globalIdx <= 5 && (
+                                  <span className="num text-[11px] text-[var(--color-muted)]">
+                                    #{globalIdx}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="max-w-[160px] truncate text-[12px] text-[var(--color-muted)]" title={t.name}>
+                                {t.name}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      <td className="px-4 py-3 font-mono font-bold text-[var(--color-ink)]">
-                        {formatUsd(t.priceUsd > 0 ? t.priceUsd : (t.marketCap > 0 ? t.marketCap / 1000000000 : 0))}
-                      </td>
+                        <td className="align-top px-3 py-3">
+                          <div className="min-w-[260px] max-w-[340px] rounded-xl border border-[var(--color-line)] bg-[var(--color-field)] p-2.5">
+                            <div className="mb-2 flex items-center justify-between gap-2">
+                              <div className="text-[9px] font-mono font-bold uppercase tracking-[0.12em] text-[var(--color-muted)]">
+                                {thesisEntries.length > 0 ? 'Recent thesis' : 'No thesis'}
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedToken((current) => current === t.address.toLowerCase() ? null : t.address.toLowerCase())}
+                                  className="text-[9px] font-mono text-[var(--color-muted)] hover:text-[var(--color-ink)]"
+                                >
+                                  {isExpanded ? 'Hide thesis' : 'View all thesis'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const key = t.address.toLowerCase();
+                                    setOpenThesisComposer(prev => ({ ...prev, [key]: !prev[key] }));
+                                    setExpandedToken(key);
+                                  }}
+                                  className="inline-flex items-center gap-1 rounded-md bg-[var(--color-copper)] px-2 py-1 text-[9px] font-bold text-stone-950"
+                                >
+                                  <Plus className="h-3 w-3" />
+                                  Create
+                                </button>
+                              </div>
+                            </div>
 
-                      {TIMEFRAMES.map((tf) => (
-                        <ChangeCell
-                          key={tf.key}
-                          title={tf.title}
-                          change={t[tf.key]}
-                          txLabel={tf.tx}
-                          buys={t[tf.buys]}
-                          sells={t[tf.sells]}
-                        />
-                      ))}
+                            <div className="space-y-2">
+                              {featuredEntry ? (
+                                <div className="rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] p-2">
+                                  <div className="mb-1 flex items-center justify-between gap-2">
+                                    <span className="rounded-full bg-[var(--color-copper)] px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[0.12em] text-stone-950">
+                                      Top thesis
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (featuredEntry && !!currentUserId && featuredEntry.createdById !== currentUserId && !(featuredEntry.likedBy ?? []).includes(currentUserId)) {
+                                          onLikeThesis?.(t, featuredEntry.id);
+                                        }
+                                      }}
+                                      disabled={!!currentUserId && (featuredEntry.createdById === currentUserId || (featuredEntry.likedBy ?? []).includes(currentUserId))}
+                                      className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[8px] font-bold ${
+                                        !!currentUserId && featuredEntry.createdById !== currentUserId && !(featuredEntry.likedBy ?? []).includes(currentUserId)
+                                          ? 'border-[var(--color-line)] text-[var(--color-ink)] hover:border-[var(--color-copper)]'
+                                          : 'cursor-not-allowed border-[var(--color-line)] text-[var(--color-muted)] opacity-70'
+                                      }`}
+                                    >
+                                      <span className={(featuredEntry.likes ?? 0) > 0 ? 'text-[var(--color-copper)]' : 'text-[var(--color-muted)]'}>♥</span>
+                                      <span>{featuredEntry.likes ?? 0}</span>
+                                    </button>
+                                  </div>
 
-                      <td className="px-4 py-3 font-mono font-semibold text-[var(--color-ink)]">{formatUsd(t.marketCap)}</td>
-                      <td className="px-4 py-3 font-mono font-semibold text-[var(--color-ink)]">{formatUsd(t.volume24h)}</td>
-                      <td className="px-4 py-3">
-                        <div className="font-mono font-semibold text-[var(--color-ink)]">
-                          {t.liquidityUsd > 0 ? formatUsd(t.liquidityUsd) : <span className="text-[var(--color-muted)] text-[11px] font-normal">$4.9K Base</span>}
-                        </div>
-                        <div className="flex items-center gap-1 mt-0.5">
-                          <a
-                            href={t.dexUrl || `https://dexscreener.com/bsc/${t.pool || t.address}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1 text-[10px] font-mono text-cyan-400 hover:text-cyan-300 hover:underline"
-                            title={`DEX Pool: ${t.pool || t.address}`}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <span>DEX Pool</span>
-                            <ExternalLink className="w-2.5 h-2.5" />
-                          </a>
-                        </div>
-                      </td>
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="flex min-w-0 items-center gap-2">
+                                      <div className="grid h-6 w-6 shrink-0 place-items-center overflow-hidden rounded-full border border-[var(--color-line)] bg-[var(--color-field)] text-[8px] font-bold text-[var(--color-copper)]">
+                                        {featuredEntry.createdByAvatarUrl ? (
+                                          <img src={featuredEntry.createdByAvatarUrl} alt={featuredEntry.createdByDisplayName || featuredEntry.createdBy || 'Anonymous'} className="h-full w-full object-cover" />
+                                        ) : (
+                                          getInitials(featuredEntry.createdByDisplayName || featuredEntry.createdBy || 'Anonymous')
+                                        )}
+                                      </div>
+                                      <div className="min-w-0">
+                                        <div className="truncate text-[9px] font-bold text-[var(--color-ink)]">{featuredEntry.createdByDisplayName || featuredEntry.createdBy || 'Anonymous'}</div>
+                                        <div className="text-[8px] text-[var(--color-muted)]">
+                                          {new Date(featuredEntry.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="mt-1 text-[9px] font-bold text-[var(--color-ink)]">{featuredEntry.title}</div>
+                                  <div className="mt-1 max-h-20 overflow-hidden text-[9px] leading-4 text-[var(--color-muted)]">{featuredEntry.content}</div>
+                                </div>
+                              ) : (
+                                <div className="rounded-lg border border-dashed border-[var(--color-line)] bg-[var(--color-surface)] px-2.5 py-2 text-[9px] text-[var(--color-muted)]">
+                                  No thesis yet for {t.symbol}
+                                </div>
+                              )}
 
-                      <td className="px-4 py-3">
-                        <div
-                          onClick={() => t.creator && onFilterByDev(t.creator)}
-                          className="cursor-pointer hover:opacity-80 transition-opacity"
-                          title="Click to filter by developer"
-                        >
-                          {devCount >= 4 ? (
-                            <span className="num text-[12px] text-[var(--color-down)]">Serial {devCount}</span>
-                          ) : devCount > 1 ? (
-                            <span className="num text-[12px] text-[var(--color-copper)]">Multi {devCount}</span>
-                          ) : (
-                            <span className="num text-[12px] text-[var(--color-up)]">Single</span>
-                          )}
-                          <div className="text-[10px] font-mono text-[var(--color-muted)] mt-0.5">
-                            {truncateAddr(t.creator)}
+                              {isExpanded && hiddenEntries.length > 0 && (
+                                <div className="max-h-[220px] space-y-2 overflow-y-auto pr-1">
+                                  {hiddenEntries.map((entry) => {
+                                    const authorDisplayName = entry.createdByDisplayName || entry.createdBy || 'Anonymous';
+                                    const authorAvatar = entry.createdByAvatarUrl || '';
+                                    const hasUserLiked = !!currentUserId && (entry.likedBy ?? []).includes(currentUserId);
+                                    const isOwnThesis = !!currentUserId && entry.createdById === currentUserId;
+                                    const canLike = !!currentUserId && !isOwnThesis && !hasUserLiked;
+                                    const isLiked = (entry.likes ?? 0) > 0;
+                                    return (
+                                      <div key={entry.id} className="rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] p-2">
+                                        <div className="mb-1 flex items-center justify-between gap-2">
+                                          <span className="text-[7px] font-mono uppercase tracking-[0.12em] text-[var(--color-muted)]">
+                                            Thesis
+                                          </span>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              if (canLike) onLikeThesis?.(t, entry.id);
+                                            }}
+                                            disabled={!canLike}
+                                            className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[8px] font-bold ${
+                                              canLike
+                                                ? 'border-[var(--color-line)] text-[var(--color-ink)] hover:border-[var(--color-copper)]'
+                                                : 'cursor-not-allowed border-[var(--color-line)] text-[var(--color-muted)] opacity-70'
+                                            }`}
+                                          >
+                                            <span className={isLiked ? 'text-[var(--color-copper)]' : 'text-[var(--color-muted)]'}>♥</span>
+                                            <span>{entry.likes ?? 0}</span>
+                                          </button>
+                                        </div>
+                                        <div className="flex items-start justify-between gap-2">
+                                          <div className="flex min-w-0 items-center gap-2">
+                                            <div className="grid h-6 w-6 shrink-0 place-items-center overflow-hidden rounded-full border border-[var(--color-line)] bg-[var(--color-field)] text-[8px] font-bold text-[var(--color-copper)]">
+                                              {authorAvatar ? (
+                                                <img src={authorAvatar} alt={authorDisplayName} className="h-full w-full object-cover" />
+                                              ) : (
+                                                getInitials(authorDisplayName)
+                                              )}
+                                            </div>
+                                            <div className="min-w-0">
+                                              <div className="truncate text-[9px] font-bold text-[var(--color-ink)]">{authorDisplayName}</div>
+                                              <div className="text-[8px] text-[var(--color-muted)]">
+                                                {new Date(entry.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </div>
+                                        <div className="mt-1 text-[9px] font-bold text-[var(--color-ink)]">{entry.title}</div>
+                                        <div className="mt-1 max-h-20 overflow-hidden text-[9px] leading-4 text-[var(--color-muted)]">{entry.content}</div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+
+                              {isComposerOpen && (
+                                <div className="space-y-2 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] p-2">
+                                  <input
+                                    value={thesisDrafts[t.address]?.title ?? ''}
+                                    onChange={(event) => {
+                                      const next = { ...(thesisDrafts[t.address] ?? { title: '', content: '' }), title: event.target.value };
+                                      setThesisDrafts(prev => ({ ...prev, [t.address]: next }));
+                                    }}
+                                    placeholder="Thesis title"
+                                    className="w-full rounded-md border border-[var(--color-line)] bg-[var(--color-field)] px-2 py-1 text-[9px] text-[var(--color-ink)] outline-none placeholder:text-[var(--color-muted)]"
+                                  />
+                                  <textarea
+                                    value={thesisDrafts[t.address]?.content ?? ''}
+                                    onChange={(event) => {
+                                      const next = { ...(thesisDrafts[t.address] ?? { title: '', content: '' }), content: event.target.value };
+                                      setThesisDrafts(prev => ({ ...prev, [t.address]: next }));
+                                    }}
+                                    rows={2}
+                                    placeholder="Add a thesis for this token..."
+                                    className="w-full resize-none rounded-md border border-[var(--color-line)] bg-[var(--color-field)] px-2 py-1 text-[9px] text-[var(--color-ink)] outline-none placeholder:text-[var(--color-muted)]"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const draft = thesisDrafts[t.address] ?? { title: '', content: '' };
+                                      onAddThesis?.(t, draft.title, draft.content);
+                                      setThesisDrafts(prev => ({ ...prev, [t.address]: { title: '', content: '' } }));
+                                      setOpenThesisComposer(prev => ({ ...prev, [t.address.toLowerCase()]: false }));
+                                    }}
+                                    className="inline-flex items-center gap-1 rounded-md bg-[var(--color-copper)] px-2 py-1 text-[9px] font-bold text-stone-950"
+                                  >
+                                    <Plus className="w-3 h-3" />
+                                    Save thesis
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      <td className="px-4 py-3">
-                        <div className="num text-[13px] text-[var(--color-ink)]">{t.agentScore}</div>
-                        <div className="mt-1 h-1 w-14 overflow-hidden rounded-full bg-white/10">
-                          <div
-                            className="h-full bg-[var(--color-copper)]"
-                            style={{ width: `${Math.min(t.agentScore, 100)}%` }}
+                        <td className="px-4 py-3 font-mono font-bold text-[var(--color-ink)]">
+                          {formatUsd(t.priceUsd > 0 ? t.priceUsd : (t.marketCap > 0 ? t.marketCap / 1000000000 : 0))}
+                        </td>
+
+                        {TIMEFRAMES.map((tf) => (
+                          <ChangeCell
+                            key={tf.key}
+                            title={tf.title}
+                            change={t[tf.key]}
+                            txLabel={tf.tx}
+                            buys={t[tf.buys]}
+                            sells={t[tf.sells]}
                           />
-                        </div>
-                      </td>
+                        ))}
 
-                      <td className="px-4 py-3 text-right">
-                        <div className="inline-flex items-center justify-end gap-1.5">
-                          {onOpenTokenSniffer && (
-                            <button
-                              onClick={() => onOpenTokenSniffer(t)}
-                              className="btn h-8 px-2 text-[12px] text-amber-400 hover:text-amber-300"
-                              title="GoPlus Security & Pair Audit"
+                        <td className="px-4 py-3 font-mono font-semibold text-[var(--color-ink)]">{formatUsd(t.marketCap)}</td>
+                        <td className="px-4 py-3 font-mono font-semibold text-[var(--color-ink)]">{formatUsd(t.volume24h)}</td>
+                        <td className="px-4 py-3">
+                          <div className="font-mono font-semibold text-[var(--color-ink)]">
+                            {t.liquidityUsd > 0 ? formatUsd(t.liquidityUsd) : <span className="text-[var(--color-muted)] text-[11px] font-normal">$4.9K Base</span>}
+                          </div>
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <a
+                              href={t.dexUrl || `https://dexscreener.com/bsc/${t.pool || t.address}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-[10px] font-mono text-cyan-400 hover:text-cyan-300 hover:underline"
+                              title={`DEX Pool: ${t.pool || t.address}`}
+                              onClick={(e) => e.stopPropagation()}
                             >
-                              🛡️
+                              <span>DEX Pool</span>
+                              <ExternalLink className="w-2.5 h-2.5" />
+                            </a>
+                          </div>
+                        </td>
+
+                        <td className="px-4 py-3">
+                          <div
+                            onClick={() => t.creator && onFilterByDev(t.creator)}
+                            className="cursor-pointer hover:opacity-80 transition-opacity"
+                            title="Click to filter by developer"
+                          >
+                            {devCount >= 4 ? (
+                              <span className="num text-[12px] text-[var(--color-down)]">Serial {devCount}</span>
+                            ) : devCount > 1 ? (
+                              <span className="num text-[12px] text-[var(--color-copper)]">Multi {devCount}</span>
+                            ) : (
+                              <span className="num text-[12px] text-[var(--color-up)]">Single</span>
+                            )}
+                            <div className="text-[10px] font-mono text-[var(--color-muted)] mt-0.5">
+                              {truncateAddr(t.creator)}
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="px-4 py-3">
+                          <div className="num text-[13px] text-[var(--color-ink)]">{t.agentScore}</div>
+                          <div className="mt-1 h-1 w-14 overflow-hidden rounded-full bg-white/10">
+                            <div
+                              className="h-full bg-[var(--color-copper)]"
+                              style={{ width: `${Math.min(t.agentScore, 100)}%` }}
+                            />
+                          </div>
+                        </td>
+
+                        <td className="bg-[var(--color-surface)] px-4 py-3 text-right">
+                          <div className="inline-flex items-center justify-end gap-1.5 whitespace-nowrap">
+                            {onOpenTokenSniffer && (
+                              <button
+                                onClick={() => onOpenTokenSniffer(t)}
+                                className="btn h-8 px-2 text-[12px] text-amber-400 hover:text-amber-300"
+                                title="GoPlus Security & Pair Audit"
+                              >
+                                🛡️
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setExpandedToken((current) => current === t.address.toLowerCase() ? null : t.address.toLowerCase())}
+                              className="btn h-8 px-2.5 text-[11px] text-[var(--color-ink)] border border-[var(--color-line)]"
+                            >
+                              Thesis {thesisEntries.length > 0 ? `(${thesisEntries.length})` : ''}
                             </button>
-                          )}
-                          <button
-                            onClick={() => onAnalyze(t)}
-                            className="btn h-8 px-3 text-[12px]"
-                          >
-                            {dict.btnAnalyze}
-                          </button>
-                          <button
-                            onClick={() => onTrade(t)}
-                            className="btn btn-solid h-8 px-3 text-[12px]"
-                          >
-                            {dict.btnSwap}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
+                            <button
+                              onClick={() => onAnalyze(t)}
+                              className="btn h-8 px-3 text-[12px]"
+                            >
+                              {dict.btnAnalyze}
+                            </button>
+                            <button
+                              onClick={() => onTrade(t)}
+                              className="btn btn-solid h-8 px-3 text-[12px]"
+                            >
+                              {dict.btnSwap}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    </React.Fragment>
                   );
                 })
               )}

@@ -13,7 +13,7 @@ export const Route = createFileRoute("/api/visitors/leave")({
         } catch {
           sessionId = "";
         }
-        return Response.json(leaveVisitor(sessionId));
+        return Response.json(await leaveVisitor(sessionId));
       },
     },
   },

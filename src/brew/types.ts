@@ -12,6 +12,9 @@ export interface Token {
   launchedAt: number;
   blockNumber: number;
   txHash: string;
+  lastBuyAt?: number;
+  lastBuyBlockNumber?: number;
+  lastBuyLogIndex?: number;
   logoUrl: string;
   fallbackLogoUrl: string;
   onchainArtworkContract?: string;
@@ -83,10 +86,10 @@ export interface TokensPayload {
   tokens: Token[];
 }
 
-export type ViewTab = 'radar' | 'copilot' | 'picks' | 'devs';
-export type FilterType = 'all' | 'newest' | 'dex-active' | 'top10-gainers' | 'top10-mcap' | 'top10-vol' | 'top10-potential' | 'serial-dev' | 'watchlist';
+export type ViewTab = 'radar' | 'copilot' | 'picks' | 'devs' | 'chat';
+export type FilterType = 'all' | 'newest' | 'recent-buy' | 'dex-active' | 'top10-gainers' | 'top10-mcap' | 'top10-vol' | 'top10-potential' | 'serial-dev' | 'watchlist';
 export type SortKey = 'rank' | 'priceUsd' | 'priceChange5m' | 'priceChange1h' | 'priceChange6h' | 'priceChange24h' | 'marketCap' | 'volume24h' | 'liquidityUsd' | 'creatorLaunchCount' | 'agentScore';
-export type Language = 'en' | 'id' | 'zh' | 'ja';
+export type Language = 'en' | 'zh' | 'ja';
 
 export interface VisitorStats {
   activeVisitors: number;

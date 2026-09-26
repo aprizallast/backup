@@ -4,7 +4,7 @@ import { I18N } from '../i18n.ts';
 import { formatUsd, formatPct, truncateAddr, copyToClipboard } from '../utils/format.ts';
 import { TokenAvatar } from './TokenAvatar.tsx';
 import { TradingViewChart } from './TradingViewChart.tsx';
-import { X, Copy, ExternalLink, Sparkles, TrendingUp, ArrowUpRight, ArrowDownRight, Activity } from 'lucide-react';
+import { X, Copy, ExternalLink, Sparkles, TrendingUp, ArrowUpRight, ArrowDownRight, Activity, Star } from 'lucide-react';
 
 interface DetailModalProps {
   token: Token | null;
@@ -17,6 +17,7 @@ interface DetailModalProps {
   onShowToast: (msg: string) => void;
   watchlist?: string[];
   onToggleWatchlist?: (tokenAddress: string) => void;
+  onSetFavoriteToken?: (token: Token) => void;
 }
 
 export const DetailModal: React.FC<DetailModalProps> = ({
@@ -29,7 +30,8 @@ export const DetailModal: React.FC<DetailModalProps> = ({
   allTokens,
   onShowToast,
   watchlist: _watchlist = [],
-  onToggleWatchlist: _onToggleWatchlist
+  onToggleWatchlist: _onToggleWatchlist,
+  onSetFavoriteToken,
 }) => {
   const dict = I18N[lang] || I18N.en;
   const [simCapital, setSimCapital] = useState<number>(50);
@@ -188,12 +190,27 @@ export const DetailModal: React.FC<DetailModalProps> = ({
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-1.5 text-[var(--color-muted)] hover:text-[var(--color-ink)] rounded-lg hover:bg-[var(--color-line)] transition-colors cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {onSetFavoriteToken && (
+              <button
+                type="button"
+                onClick={() => {
+                  onSetFavoriteToken(token);
+                  onShowToast(`Saved ${token.symbol} as your favorite thesis token.`);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-200 hover:bg-amber-500/20"
+              >
+                <Star className="h-3.5 w-3.5" />
+                Favorite token
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-1.5 text-[var(--color-muted)] hover:text-[var(--color-ink)] rounded-lg hover:bg-[var(--color-line)] transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* TradingView Real-Time Chart (CoinGecko Terminal & DexScreener) */}

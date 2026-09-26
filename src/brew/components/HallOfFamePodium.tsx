@@ -82,7 +82,7 @@ export const HallOfFamePodium: React.FC<HallOfFamePodiumProps> = ({
     { id: 'volume', label: dict.hofCritVol || 'Volume 24H', icon: '📊' },
     { id: 'change', label: dict.hofCritChange || 'Top Gainers', icon: '🚀' },
     { id: 'mcap', label: dict.hofCritMcap || 'Market Cap', icon: '💎' },
-    { id: 'buys', label: lang === 'id' ? 'Tekanan Beli' : 'Buy Pressure', icon: '🔥' },
+    { id: 'buys', label: 'Buy Pressure', icon: '🔥' },
   ];
 
   const getHighlightStat = (token?: Token) => {

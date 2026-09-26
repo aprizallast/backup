@@ -1,5 +1,6 @@
 {
-  "VITE_AUTH_ENABLED": "false",
+  "VITE_PRIVY_APP_ID": "cmuhwfgg300sq0cl5wnqczmu2",
+  "VITE_AUTH_ENABLED": "true",
   "deploy": {
     "database": false
   }

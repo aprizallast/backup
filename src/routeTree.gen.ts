@@ -10,19 +10,27 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as ApiCoingeckoRouteImport } from './routes/api/coingecko'
 import { Route as ApiCopilotRouteImport } from './routes/api/copilot'
 import { Route as ApiDexRouteImport } from './routes/api/dex'
 import { Route as ApiInspectRouteImport } from './routes/api/inspect'
+import { Route as ApiSalesRouteImport } from './routes/api/sales'
 import { Route as ApiSearchRouteImport } from './routes/api/search'
 import { Route as ApiTokensRouteImport } from './routes/api/tokens'
 import { Route as ApiArtworkAddressRouteImport } from './routes/api/artwork/$address'
+import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiVisitorsLeaveRouteImport } from './routes/api/visitors/leave'
 import { Route as ApiVisitorsPingRouteImport } from './routes/api/visitors/ping'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiCoingeckoRoute = ApiCoingeckoRouteImport.update({
@@ -45,6 +53,11 @@ const ApiInspectRoute = ApiInspectRouteImport.update({
   path: '/api/inspect',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiSalesRoute = ApiSalesRouteImport.update({
+  id: '/api/sales',
+  path: '/api/sales',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiSearchRoute = ApiSearchRouteImport.update({
   id: '/api/search',
   path: '/api/search',
@@ -60,6 +73,11 @@ const ApiArtworkAddressRoute = ApiArtworkAddressRouteImport.update({
   path: '/api/artwork/$address',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
+  id: '/api/auth/$',
+  path: '/api/auth/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiVisitorsLeaveRoute = ApiVisitorsLeaveRouteImport.update({
   id: '/api/visitors/leave',
   path: '/api/visitors/leave',
@@ -73,38 +91,47 @@ const ApiVisitorsPingRoute = ApiVisitorsPingRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/api/coingecko': typeof ApiCoingeckoRoute
   '/api/copilot': typeof ApiCopilotRoute
   '/api/dex': typeof ApiDexRoute
   '/api/inspect': typeof ApiInspectRoute
+  '/api/sales': typeof ApiSalesRoute
   '/api/search': typeof ApiSearchRoute
   '/api/tokens': typeof ApiTokensRoute
   '/api/artwork/$address': typeof ApiArtworkAddressRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/visitors/leave': typeof ApiVisitorsLeaveRoute
   '/api/visitors/ping': typeof ApiVisitorsPingRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/api/coingecko': typeof ApiCoingeckoRoute
   '/api/copilot': typeof ApiCopilotRoute
   '/api/dex': typeof ApiDexRoute
   '/api/inspect': typeof ApiInspectRoute
+  '/api/sales': typeof ApiSalesRoute
   '/api/search': typeof ApiSearchRoute
   '/api/tokens': typeof ApiTokensRoute
   '/api/artwork/$address': typeof ApiArtworkAddressRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/visitors/leave': typeof ApiVisitorsLeaveRoute
   '/api/visitors/ping': typeof ApiVisitorsPingRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/api/coingecko': typeof ApiCoingeckoRoute
   '/api/copilot': typeof ApiCopilotRoute
   '/api/dex': typeof ApiDexRoute
   '/api/inspect': typeof ApiInspectRoute
+  '/api/sales': typeof ApiSalesRoute
   '/api/search': typeof ApiSearchRoute
   '/api/tokens': typeof ApiTokensRoute
   '/api/artwork/$address': typeof ApiArtworkAddressRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/visitors/leave': typeof ApiVisitorsLeaveRoute
   '/api/visitors/ping': typeof ApiVisitorsPingRoute
 }
@@ -112,50 +139,62 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/login'
     | '/api/coingecko'
     | '/api/copilot'
     | '/api/dex'
     | '/api/inspect'
+    | '/api/sales'
     | '/api/search'
     | '/api/tokens'
     | '/api/artwork/$address'
+    | '/api/auth/$'
     | '/api/visitors/leave'
     | '/api/visitors/ping'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/login'
     | '/api/coingecko'
     | '/api/copilot'
     | '/api/dex'
     | '/api/inspect'
+    | '/api/sales'
     | '/api/search'
     | '/api/tokens'
     | '/api/artwork/$address'
+    | '/api/auth/$'
     | '/api/visitors/leave'
     | '/api/visitors/ping'
   id:
     | '__root__'
     | '/'
+    | '/login'
     | '/api/coingecko'
     | '/api/copilot'
     | '/api/dex'
     | '/api/inspect'
+    | '/api/sales'
     | '/api/search'
     | '/api/tokens'
     | '/api/artwork/$address'
+    | '/api/auth/$'
     | '/api/visitors/leave'
     | '/api/visitors/ping'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  LoginRoute: typeof LoginRoute
   ApiCoingeckoRoute: typeof ApiCoingeckoRoute
   ApiCopilotRoute: typeof ApiCopilotRoute
   ApiDexRoute: typeof ApiDexRoute
   ApiInspectRoute: typeof ApiInspectRoute
+  ApiSalesRoute: typeof ApiSalesRoute
   ApiSearchRoute: typeof ApiSearchRoute
   ApiTokensRoute: typeof ApiTokensRoute
   ApiArtworkAddressRoute: typeof ApiArtworkAddressRoute
+  ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiVisitorsLeaveRoute: typeof ApiVisitorsLeaveRoute
   ApiVisitorsPingRoute: typeof ApiVisitorsPingRoute
 }
@@ -167,6 +206,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/coingecko': {
@@ -197,6 +243,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiInspectRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/sales': {
+      id: '/api/sales'
+      path: '/api/sales'
+      fullPath: '/api/sales'
+      preLoaderRoute: typeof ApiSalesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/search': {
       id: '/api/search'
       path: '/api/search'
@@ -218,6 +271,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiArtworkAddressRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/auth/$': {
+      id: '/api/auth/$'
+      path: '/api/auth/$'
+      fullPath: '/api/auth/$'
+      preLoaderRoute: typeof ApiAuthSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/visitors/leave': {
       id: '/api/visitors/leave'
       path: '/api/visitors/leave'
@@ -237,13 +297,16 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  LoginRoute: LoginRoute,
   ApiCoingeckoRoute: ApiCoingeckoRoute,
   ApiCopilotRoute: ApiCopilotRoute,
   ApiDexRoute: ApiDexRoute,
   ApiInspectRoute: ApiInspectRoute,
+  ApiSalesRoute: ApiSalesRoute,
   ApiSearchRoute: ApiSearchRoute,
   ApiTokensRoute: ApiTokensRoute,
   ApiArtworkAddressRoute: ApiArtworkAddressRoute,
+  ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiVisitorsLeaveRoute: ApiVisitorsLeaveRoute,
   ApiVisitorsPingRoute: ApiVisitorsPingRoute,
 }

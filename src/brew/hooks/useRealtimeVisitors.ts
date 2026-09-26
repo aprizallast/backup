@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useCurrentUserState } from '@/lib/auth/use-current-user';
 import { VisitorStats } from '../types.ts';
 
 const SESSION_KEY = 'agent_brew_visitor_session_id';
@@ -18,6 +19,7 @@ function getOrCreateSessionId(): string {
 }
 
 export function useRealtimeVisitors() {
+  const { user } = useCurrentUserState();
   const [stats, setStats] = useState<VisitorStats>({
     activeVisitors: 1,
     totalVisits: 142,
@@ -35,7 +37,11 @@ export function useRealtimeVisitors() {
         body: JSON.stringify({
           sessionId: sessionIdRef.current,
           path: window.location.pathname,
-          referrer: document.referrer || ''
+          referrer: document.referrer || '',
+          userId: user?.id || undefined,
+          username: user?.username || user?.displayName || undefined,
+          primaryEmail: user?.primaryEmail || undefined,
+          profileImageUrl: user?.profileImageUrl || undefined,
         })
       });
       if (res.ok) {
@@ -51,7 +57,7 @@ export function useRealtimeVisitors() {
     } catch {
       // Keep existing count on transient network issue
     }
-  }, []);
+  }, [user?.id, user?.displayName, user?.primaryEmail, user?.profileImageUrl]);
 
   useEffect(() => {
     sendPing();

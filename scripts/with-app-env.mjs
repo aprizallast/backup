@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Run a command with `.grok/app-env.json` merged into its environment.
+ * Run a command with `.env.local` and `.grok/app-env.json` merged into its environment.
  *
  * `dev`, `build` and `preview` all route through this wrapper, so the dev
  * server, the built bundle and the preview server can never disagree about
@@ -20,12 +20,13 @@
  * `process.env`, which is why the merge has to happen before Vite starts.
  */
 import { spawn } from "node:child_process";
-import { readFileSync, realpathSync } from "node:fs";
-import { constants as osConstants } from "node:os";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { arch as osArch, constants as osConstants, platform as osPlatform } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const APP_ENV_REL_PATH = ".grok/app-env.json";
+export const LOCAL_ENV_REL_PATH = ".env.local";
 
 const VITE_PREFIX = "VITE_";
 
@@ -87,6 +88,29 @@ export function projectRoot() {
   return dirname(dirname(fileURLToPath(import.meta.url)));
 }
 
+/** Load local secrets without replacing values injected by the parent process. */
+export function loadLocalEnv(root) {
+  const envPath = join(root, LOCAL_ENV_REL_PATH);
+  if (existsSync(envPath)) process.loadEnvFile(envPath);
+}
+
+export function resolveCommand(command, root = projectRoot(), platform = osPlatform()) {
+  if (platform !== "win32") return command;
+
+  const binDir = join(root, "node_modules", ".bin");
+  const candidates = [
+    join(binDir, `${command}.cmd`),
+    join(binDir, `${command}.ps1`),
+    join(binDir, command),
+  ];
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+
+  return command;
+}
+
 /**
  * Whether `moduleUrl` is the script node was asked to run.
  *
@@ -110,8 +134,17 @@ function main(argv) {
     console.error("usage: node scripts/with-app-env.mjs <command> [args…]");
     process.exit(2);
   }
-  const env = mergeAppEnv(readAppEnv(projectRoot()), process.env);
-  const child = spawn(command, args, { stdio: "inherit", env });
+  const root = projectRoot();
+  loadLocalEnv(root);
+  const env = mergeAppEnv(readAppEnv(root), process.env);
+  const isWindowsVite = osPlatform() === "win32" && command === "vite";
+  const resolvedCommand = isWindowsVite
+    ? process.execPath
+    : resolveCommand(command, root, osPlatform());
+  const resolvedArgs = isWindowsVite
+    ? [join(root, "node_modules", "vite", "bin", "vite.js"), ...args]
+    : args;
+  const child = spawn(resolvedCommand, resolvedArgs, { stdio: "inherit", env });
   // The dev server is long-running and is stopped by signalling this wrapper.
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
     process.on(signal, () => child.kill(signal));

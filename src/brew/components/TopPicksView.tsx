@@ -92,7 +92,7 @@ export const TopPicksView: React.FC<TopPicksViewProps> = ({
           <table className="w-full min-w-[900px] text-left text-xs text-[var(--color-muted)]">
             <thead className="bg-[var(--color-field)] text-[var(--color-copper)]/90 uppercase tracking-wider text-[10px] font-mono font-bold border-b border-[var(--color-line)]">
               <tr>
-                <th className="px-4 py-3.5">{dict.thToken}</th>
+                <th className="sticky left-0 z-20 bg-[var(--color-field)] px-4 py-3.5">{dict.thToken}</th>
                 <th className="px-4 py-3.5">{dict.thPrice}</th>
                 <th className="px-4 py-3.5">{dict.thMarketCap}</th>
                 <th className="px-4 py-3.5">{dict.thLiquidity}</th>
@@ -116,7 +116,7 @@ export const TopPicksView: React.FC<TopPicksViewProps> = ({
                   const price = t.priceUsd > 0 ? t.priceUsd : (t.marketCap > 0 ? t.marketCap / 1000000000 : 0);
                   return (
                     <tr key={t.address} className="hover:bg-[var(--color-line)] transition-colors">
-                      <td className="px-4 py-3">
+                      <td className="sticky left-0 z-10 bg-[var(--color-surface)] px-4 py-3 shadow-[1px_0_0_rgba(244,241,234,0.08)]">
                         <div className="flex items-center gap-2.5">
                           <TokenAvatar
                             symbol={t.symbol}
